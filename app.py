@@ -448,7 +448,30 @@ def main():
         }
         return '';
         """
-        CLICK_RENEW_JS = FIND_RENEW_JS.replace("return t;", "els[i].click(); return t;")
+        # 一次执行内完成查找+点击（避免两次查找之间页面重渲染点偏）；多个候选时取文案最短的那个（真按钮文案最短）
+        CLICK_RENEW_JS = """
+        var texts = ['renew free plan', '续期免费套餐', 'renew 4 days',
+                     'renew for 4 days', '续期 4 天', '续期4天'];
+        var els = document.querySelectorAll('button, a, [role="button"]');
+        var best = null;
+        for (var i = 0; i < els.length; i++) {
+            var r = els[i].getBoundingClientRect();
+            if (r.width === 0 || r.height === 0) continue;
+            var t = (els[i].innerText || '').trim();
+            if (!t) continue;
+            var low = t.toLowerCase();
+            for (var j = 0; j < texts.length; j++) {
+                if (low.indexOf(texts[j]) !== -1) {
+                    if (!best || t.length < best.t.length) best = {el: els[i], t: t};
+                    break;
+                }
+            }
+        }
+        if (!best) return '';
+        best.el.scrollIntoView({block: 'center'});
+        best.el.click();
+        return best.t;
+        """
 
         outer_renew_found = False
         countdown_text = None
@@ -476,7 +499,14 @@ def main():
             print("🔄 点击外部续期按钮，等待验证窗口...")
             try:
                 sb.sleep(2)
-                clicked_text = js(sb, CLICK_RENEW_JS, "")
+                clicked_text = ""
+                for _attempt in range(2):
+                    _ct = js(sb, CLICK_RENEW_JS, "")
+                    if _ct and any(tx in _ct.lower() for tx in RENEW_BTN_TEXTS):
+                        clicked_text = _ct
+                        break
+                    print(f"⚠️ 点击未命中续期按钮(第{_attempt + 1}次): '{_ct}'")
+                    sb.sleep(2)
                 if not clicked_text:
                     raise RuntimeError("JS 点击未命中续期按钮")
                 print(f"🖱️ 已点击: '{clicked_text}'")
