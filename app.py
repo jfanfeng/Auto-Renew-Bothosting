@@ -301,7 +301,21 @@ def format_countdown(countdown_str: str) -> str:
         return countdown_str
 
 # 归一化日期为 YYYY/MM/DD
+MONTHS_MAP = {name: i + 1 for i, name in enumerate(
+    ["jan", "feb", "mar", "apr", "may", "jun",
+     "jul", "aug", "sep", "oct", "nov", "dec"])}
+
 def normalize_date(date_str: str) -> str:
+    date_str = date_str.strip()
+    m = re.match(r"([A-Za-z]{3,9})\s+(\d{1,2}),\s*(\d{4})", date_str)  # November 24, 2026
+    if m and m.group(1)[:3].lower() in MONTHS_MAP:
+        return f"{m.group(3)}/{MONTHS_MAP[m.group(1)[:3].lower()]:02d}/{int(m.group(2)):02d}"
+    m = re.match(r"(\d{1,2})\s+([A-Za-z]{3,9})\s+(\d{4})", date_str)  # 24 November 2026
+    if m and m.group(2)[:3].lower() in MONTHS_MAP:
+        return f"{m.group(3)}/{MONTHS_MAP[m.group(2)[:3].lower()]:02d}/{int(m.group(1)):02d}"
+    m = re.match(r"(\d{4})年(\d{1,2})月(\d{1,2})日", date_str)  # 2026年11月24日
+    if m:
+        return f"{m.group(1)}/{int(m.group(2)):02d}/{int(m.group(3)):02d}"
     parts = date_str.split('/')
     if len(parts) == 3:
         if len(parts[2]) == 4:   # MM/DD/YYYY
@@ -313,7 +327,7 @@ def normalize_date(date_str: str) -> str:
 DATE_RE = r"(\d{4}/\d{1,2}/\d{1,2}|\d{1,2}/\d{1,2}/\d{4})"
 
 # 获取过期日期
-DATE_RE = r"(\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4}|\d{1,2}/\d{1,2}/\d{4}|\d{4}-\d{2}-\d{2})"
+DATE_RE = r"([A-Za-z]{3,9}\s+\d{1,2},\s*\d{4}|\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4}|\d{1,2}/\d{1,2}/\d{4}|\d{4}-\d{2}-\d{2}|\d{4}年\d{1,2}月\d{1,2}日)"
 def extract_expiry_date(page_source: str) -> str:
     patterns = [
         r"[Ee]xpires\s*[:\-]?\s*" + DATE_RE,   # 优先匹配包含 "Expires" 的
