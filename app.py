@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import os, re, sys, time, json, random, requests, subprocess,ctypes
+import os, re, sys, time, random, requests, subprocess,ctypes
 from seleniumbase import SB
 
 # 环境变量配置(可以直接私库在双引号里填写)
@@ -301,24 +301,8 @@ def format_countdown(countdown_str: str) -> str:
         return countdown_str
 
 # 归一化日期为 YYYY/MM/DD
-MONTHS_MAP = {}
-for _i, _m in enumerate(["january", "february", "march", "april", "may", "june", "july",
-                         "august", "september", "october", "november", "december"], start=1):
-    MONTHS_MAP[_m] = _i
-    MONTHS_MAP[_m[:3]] = _i
-
 def normalize_date(date_str: str) -> str:
-    s = (date_str or "").strip()
-    m = re.match(r"([A-Za-z]{3,9})\s+(\d{1,2}),\s*(\d{4})", s)   # November 24, 2026
-    if m and m.group(1).lower() in MONTHS_MAP:
-        return f"{m.group(3)}/{MONTHS_MAP[m.group(1).lower()]:02d}/{int(m.group(2)):02d}"
-    m = re.match(r"(\d{1,2})\s+([A-Za-z]{3,9})\s+(\d{4})", s)    # 24 November 2026
-    if m and m.group(2).lower() in MONTHS_MAP:
-        return f"{m.group(3)}/{MONTHS_MAP[m.group(2).lower()]:02d}/{int(m.group(1)):02d}"
-    m = re.match(r"(\d{4})年(\d{1,2})月(\d{1,2})日", s)          # 2026年11月24日
-    if m:
-        return f"{m.group(1)}/{int(m.group(2)):02d}/{int(m.group(3)):02d}"
-    parts = s.split('/')
+    parts = date_str.split('/')
     if len(parts) == 3:
         if len(parts[2]) == 4:   # MM/DD/YYYY
             return f"{parts[2]}/{int(parts[0]):02d}/{int(parts[1]):02d}"
@@ -326,8 +310,10 @@ def normalize_date(date_str: str) -> str:
             return f"{parts[0]}/{int(parts[1]):02d}/{int(parts[2]):02d}"
     return date_str
 
+DATE_RE = r"(\d{4}/\d{1,2}/\d{1,2}|\d{1,2}/\d{1,2}/\d{4})"
+
 # 获取过期日期
-DATE_RE = r"([A-Za-z]{3,9}\s+\d{1,2},\s*\d{4}|\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4}|\d{4}年\d{1,2}月\d{1,2}日|\d{4}/\d{1,2}/\d{1,2}|\d{1,2}/\d{1,2}/\d{4}|\d{4}-\d{2}-\d{2})"
+DATE_RE = r"(\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4}|\d{1,2}/\d{1,2}/\d{4}|\d{4}-\d{2}-\d{2})"
 def extract_expiry_date(page_source: str) -> str:
     patterns = [
         r"[Ee]xpires\s*[:\-]?\s*" + DATE_RE,   # 优先匹配包含 "Expires" 的
@@ -449,7 +435,8 @@ def main():
         RENEW_BTN_TEXTS = ["renew free plan", "续期免费套餐", "renew 4 days",
                            "renew for 4 days", "续期 4 天", "续期4天"]
         FIND_RENEW_JS = """
-        var texts = %s;
+        var texts = ['renew free plan', '续期免费套餐', 'renew 4 days',
+                     'renew for 4 days', '续期 4 天', '续期4天'];
         var els = document.querySelectorAll('button, a, [role="button"]');
         for (var j = 0; j < texts.length; j++) {
             for (var i = 0; i < els.length; i++) {
@@ -460,7 +447,7 @@ def main():
             }
         }
         return '';
-        """ % json.dumps(RENEW_BTN_TEXTS, ensure_ascii=False)
+        """
         CLICK_RENEW_JS = FIND_RENEW_JS.replace("return t;", "els[i].click(); return t;")
 
         outer_renew_found = False
@@ -525,37 +512,13 @@ def main():
             time.sleep(5) 
 
             modal_button_clicked = False
-            for selector in ['div[role="dialog"] button.btn-primary',
-                             'div[role="dialog"] button[class*="primary"]']:
-                try:
-                    sb.click(selector, timeout=4)
-                    modal_button_clicked = True
-                    print("✅ 已点击续期按钮")
-                    break
-                except Exception:
-                    continue
-            if not modal_button_clicked:
-                MODAL_CLICK_JS = """
-                var dlg = document.querySelector('div[role="dialog"]');
-                if (!dlg) return '';
-                var texts = ['renew', 'confirm', 'continue', '续期', '确认', '确定'];
-                var els = dlg.querySelectorAll('button, a, [role="button"]');
-                for (var j = 0; j < texts.length; j++) {
-                    for (var i = 0; i < els.length; i++) {
-                        var r = els[i].getBoundingClientRect();
-                        if (r.width === 0 || r.height === 0) continue;
-                        var t = (els[i].innerText || '').trim();
-                        if (t && t.toLowerCase().indexOf(texts[j]) !== -1) { els[i].click(); return t; }
-                    }
-                }
-                return '';
-                """
-                clicked_modal = js(sb, MODAL_CLICK_JS, "")
-                if clicked_modal:
-                    modal_button_clicked = True
-                    print(f"✅ 已点击弹窗续期按钮: '{clicked_modal}'")
-                else:
-                    print("⚠️ 弹窗续期按钮未找到")
+            try:
+                selector = 'div[role="dialog"] button.btn-primary' 
+                sb.click(selector, timeout=8)
+                modal_button_clicked = True
+                print("✅ 已点击续期按钮")
+            except Exception as e:
+                print(f"续期按钮点击失败: {e}")
 
             sb.sleep(5)
             sb.refresh()
